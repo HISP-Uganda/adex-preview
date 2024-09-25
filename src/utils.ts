@@ -1,5 +1,6 @@
-import dayjs from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 import quarterOfYear from "dayjs/plugin/quarterOfYear";
+import { groupBy, uniq } from "lodash";
 
 dayjs.extend(quarterOfYear);
 
@@ -10,8 +11,8 @@ export function getCurrentQuarterMonths(): string[] {
     );
 }
 
-export function getLastQuarterMonths(): string[] {
-    const lastQuarterStart = dayjs().subtract(1, "quarter").startOf("quarter");
+export function getLastQuarterMonths(date: Dayjs): string[] {
+    const lastQuarterStart = dayjs(date).startOf("quarter");
     return [1, 2, 3].map((month) =>
         lastQuarterStart.add(month - 1, "month").format("YYYYMM"),
     );
@@ -129,4 +130,53 @@ export const osa: Record<
         description:
             "Artesunate 60mg powder for solution for injection, 1 vial",
     },
+};
+
+export const summarize = (
+    column: string,
+    data:
+        | Array<{
+              ReportingUnit: string;
+              FacilityCode: string;
+              ProductCode: number | undefined;
+              DataPoint: number;
+              CurrentReportingPeriod: string;
+              Value: number | string;
+          }>
+        | undefined,
+) => {
+    const values = Object.entries(groupBy(data, column)).reduce<
+        Record<string, number>
+    >((acc, [k, v]) => {
+        acc[k] = uniq(v.map((a) => a.FacilityCode)).length;
+        return acc;
+    }, {});
+
+    return Object.entries(values).map(([k, v]) => ({ dataPoint: k, count: v }));
+};
+
+export const summarize2 = (
+    column: string,
+    data:
+        | Array<{
+              ReportingUnit: string;
+              FacilityCode: string;
+              ProductCode: number | undefined;
+              DataPoint: number;
+              CurrentReportingPeriod: string;
+              Value: number | string;
+          }>
+        | undefined,
+) => {
+    const values = Object.entries(groupBy(data, column)).reduce<
+        Record<string, { den: number; num: number }>
+    >((acc, [k, v]) => {
+        acc[k] = {
+            den: v.length,
+            num: v.filter((a) => String(a.Value) !== "0").length,
+        };
+        return acc;
+    }, {});
+
+    return Object.entries(values).map(([k, v]) => ({ dataPoint: k, ...v }));
 };
