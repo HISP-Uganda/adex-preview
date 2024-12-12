@@ -1,62 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import type { TableColumnsType, TabsProps } from "antd";
-import { Button, DatePicker, Statistic, Table, Tabs } from "antd";
+import { Button, DatePicker, Statistic, Table, Tabs, notification } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import { uniq } from "lodash";
 import { useState } from "react";
 import { initialQueryOptions } from "../queryOptions";
-import { summarize, summarize2 } from "../utils";
+import { dataPoints, osa, summarize, summarize2 } from "../utils";
 
 const { Column } = Table;
 
-const columns: TableColumnsType<{
-    ReportingUnit: string;
-    FacilityCode: string;
-    ProductCode: number | undefined;
-    DataPoint: number;
-    CurrentReportingPeriod: string;
-    Value: string | number;
-}> = [
-    {
-        key: "ReportingUnit",
-        title: "ReportingUnit",
-        dataIndex: "ReportingUnit",
+const formatter = new Intl.NumberFormat("en-US");
+
+const productCodes = Object.entries(osa).reduce<Record<string, string>>(
+    (a, [, v]) => {
+        if (v.code && v.description) {
+            a[v.code] = v.description;
+        }
+        return a;
     },
-    {
-        key: "FacilityCode",
-        title: "FacilityCode",
-        dataIndex: "FacilityCode",
-    },
-    {
-        key: "ProductCode",
-        title: "ProductCode",
-        dataIndex: "ProductCode",
-        align: "center",
-        render: (text) => <div className="text-right">{text}</div>,
-    },
-    {
-        key: "DataPoint",
-        title: "DataPoint",
-        dataIndex: "DataPoint",
-        align: "center",
-        render: (text) => <div className="text-right">{text}</div>,
-    },
-    {
-        key: "CurrentReportingPeriod",
-        title: "CurrentReportingPeriod",
-        dataIndex: "CurrentReportingPeriod",
-        align: "center",
-        render: (text) => <div className="text-right">{text}</div>,
-    },
-    {
-        key: "Value",
-        title: "Value",
-        dataIndex: "Value",
-        align: "center",
-        render: (text) => <div className="text-right">{text}</div>,
-    },
-];
+    {},
+);
 
 const columns2: TableColumnsType<{
     FacilityCode: string;
@@ -161,7 +125,7 @@ const uploadToAzure = async (
         );
         const formData = new FormData();
         formData.append("file", file);
-        const response = await fetch("http://localhost:3001", {
+        const response = await fetch("https://gfl-adex.hispuganda.org", {
             method: "POST",
             body: formData,
         });
@@ -169,24 +133,87 @@ const uploadToAzure = async (
         if (!response.ok) {
             throw new Error("Upload failed");
         }
-        const result = await response.json();
-        console.log(result);
+        await response.json();
     }
 };
 
 function Component() {
+    const [api, contextHolder] = notification.useNotification();
+
     const [period, setPeriod] = useState(dayjs().subtract(1, "quarter"));
     const { data, isLoading } = useQuery(initialQueryOptions(period));
+
     const onChange = (date: Dayjs) => {
         setPeriod(() => date);
     };
+
+    const columns: TableColumnsType<{
+        ReportingUnit: string;
+        FacilityCode: string;
+        ProductCode: number | undefined;
+        DataPoint: number;
+        CurrentReportingPeriod: string;
+        Value: string | number;
+    }> = [
+        {
+            key: "ReportingUnit",
+            title: "ReportingUnit",
+            dataIndex: "ReportingUnit",
+        },
+        {
+            key: "FacilityCode",
+            title: "FacilityCode",
+            dataIndex: "FacilityCode",
+            render: (text) => <div>{data?.items[text]?.name || text}</div>,
+        },
+        {
+            key: "ProductCode",
+            title: "ProductCode",
+            dataIndex: "ProductCode",
+            render: (text) => <div>{productCodes[String(text)] || text}</div>,
+        },
+        {
+            key: "DataPoint",
+            title: "DataPoint",
+            dataIndex: "DataPoint",
+            render: (text) => <div>{dataPoints[String(text) || text]}</div>,
+        },
+        {
+            key: "CurrentReportingPeriod",
+            title: "CurrentReportingPeriod",
+            dataIndex: "CurrentReportingPeriod",
+            align: "center",
+            render: (text) => <div className="text-right">{text}</div>,
+        },
+        {
+            key: "Value",
+            title: "Value",
+            dataIndex: "Value",
+            align: "center",
+            render: (text) => <div className="text-right">{text}</div>,
+        },
+    ];
+
+    const uploading = async () => {
+        setLoading(() => true);
+        await uploadToAzure(data?.processed, period);
+        setLoading(() => false);
+        api.open({
+            message: "Data uploaded successfully",
+            description: `Data for ${period.format("YYYY[Q]Q")} uploaded successfully`,
+            showProgress: true,
+            pauseOnHover: true,
+        });
+    };
+
+    const [loading, setLoading] = useState<boolean>(false);
     const items: TabsProps["items"] = [
         {
             key: "1",
             label: "OSA",
             children: (
-                <div className="flex flex-col gap-4">
-                    <div className="flex flex-row gap-2 items-center justify-end">
+                <div className="flex flex-col gap-0">
+                    <div className="flex flex-row gap items-center justify-end">
                         <div>Quarter</div>
                         <DatePicker
                             onChange={onChange}
@@ -247,6 +274,7 @@ function Component() {
                                                 dataPoint: string;
                                                 count: number;
                                             }>
+                                                rowKey="dataPoint"
                                                 dataSource={summarize(
                                                     "ProductCode",
                                                     data?.processed,
@@ -261,11 +289,23 @@ function Component() {
                                                     title="Product Code"
                                                     dataIndex="dataPoint"
                                                     key="dataPoint"
+                                                    render={(text) => (
+                                                        <div>
+                                                            {productCodes[
+                                                                String(text)
+                                                            ] || text}
+                                                        </div>
+                                                    )}
                                                 />
                                                 <Column
-                                                    title="Facilities Reporting"
+                                                    title="#Facilities"
                                                     dataIndex="count"
                                                     key="count"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.count,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Rate"
@@ -292,6 +332,7 @@ function Component() {
                                                     "ProductCode",
                                                     data?.processed,
                                                 )}
+                                                rowKey="dataPoint"
                                                 title={() =>
                                                     "Summary by Product Code"
                                                 }
@@ -299,7 +340,7 @@ function Component() {
                                                 style={{ width: "100%" }}
                                             >
                                                 <Column
-                                                    title="Country Name"
+                                                    title="Country"
                                                     key="dataPoint"
                                                     render={() => "UGA"}
                                                 />
@@ -307,16 +348,33 @@ function Component() {
                                                     title="Product Code"
                                                     dataIndex="dataPoint"
                                                     key="dataPoint"
+                                                    render={(text) => (
+                                                        <div>
+                                                            {productCodes[
+                                                                String(text)
+                                                            ] || text}
+                                                        </div>
+                                                    )}
                                                 />
                                                 <Column
                                                     title="Num"
                                                     dataIndex="num"
                                                     key="num"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.num,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Den"
                                                     dataIndex="den"
                                                     key="den"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.den,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Rate"
@@ -336,6 +394,7 @@ function Component() {
                                                 dataPoint: string;
                                                 count: number;
                                             }>
+                                                rowKey="dataPoint"
                                                 dataSource={summarize(
                                                     "DataPoint",
                                                     data?.processed,
@@ -350,11 +409,23 @@ function Component() {
                                                     title="Data Point"
                                                     dataIndex="dataPoint"
                                                     key="dataPoint"
+                                                    render={(text) => (
+                                                        <div>
+                                                            {dataPoints[
+                                                                String(text)
+                                                            ] || text}
+                                                        </div>
+                                                    )}
                                                 />
                                                 <Column
-                                                    title="Facilities Reporting"
+                                                    title="#Facilities"
                                                     dataIndex="count"
                                                     key="count"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.count,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Rate"
@@ -381,6 +452,7 @@ function Component() {
                                                     "DataPoint",
                                                     data?.processed,
                                                 )}
+                                                rowKey="dataPoint"
                                                 title={() =>
                                                     "Summary by Data Points"
                                                 }
@@ -388,7 +460,7 @@ function Component() {
                                                 style={{ width: "100%" }}
                                             >
                                                 <Column
-                                                    title="Country Name"
+                                                    title="Country"
                                                     key="dataPoint"
                                                     render={() => "UGA"}
                                                 />
@@ -396,16 +468,33 @@ function Component() {
                                                     title="Data Point"
                                                     dataIndex="dataPoint"
                                                     key="dataPoint"
+                                                    render={(text) => (
+                                                        <div>
+                                                            {dataPoints[
+                                                                String(text)
+                                                            ] || text}
+                                                        </div>
+                                                    )}
                                                 />
                                                 <Column
                                                     title="Num"
                                                     dataIndex="num"
                                                     key="num"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.num,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Den"
                                                     dataIndex="den"
                                                     key="den"
+                                                    render={(_, row) =>
+                                                        formatter.format(
+                                                            row.den,
+                                                        )
+                                                    }
                                                 />
                                                 <Column
                                                     title="Rate"
@@ -426,18 +515,19 @@ function Component() {
                                 key: "2",
                                 label: "Data",
                                 children: (
-                                    <Table
-                                        columns={columns}
-                                        dataSource={data?.processed}
-                                        loading={isLoading}
-                                        pagination={{ pageSize: 18 }}
-                                        virtual
-                                        bordered
-                                        rowKey={(record) =>
-                                            `${record.FacilityCode}-${record.ProductCode}-${record.CurrentReportingPeriod}-${record.DataPoint}`
-                                        }
-                                        scroll={{ x: "max-content" }}
-                                    />
+                                    <div>
+                                        <Table
+                                            columns={columns}
+                                            dataSource={data?.processed}
+                                            loading={isLoading}
+                                            pagination={{ pageSize: 15 }}
+                                            bordered
+                                            rowKey={(record) =>
+                                                `${record.FacilityCode}-${record.ProductCode}-${record.CurrentReportingPeriod}-${record.DataPoint}`
+                                            }
+                                            scroll={{ x: "max-content" }}
+                                        />
+                                    </div>
                                 ),
                             },
                         ]}
@@ -445,9 +535,8 @@ function Component() {
                     <div className="flex flex-row items-center justify-end">
                         <Button
                             type="primary"
-                            onClick={() =>
-                                uploadToAzure(data?.processed, period)
-                            }
+                            onClick={() => uploading()}
+                            loading={loading}
                         >
                             Send Data to Azure
                         </Button>
@@ -475,6 +564,7 @@ function Component() {
                             onClick={() =>
                                 uploadToAzure(data?.processed, period)
                             }
+                            loading={loading}
                         >
                             Send Facilities to Azure
                         </Button>
@@ -492,7 +582,8 @@ function Component() {
         );
 
     return (
-        <div className="px-4">
+        <div className="px-2">
+            {contextHolder}
             <Tabs defaultActiveKey="1" items={items} />
         </div>
     );

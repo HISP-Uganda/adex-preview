@@ -219,6 +219,7 @@ export const initialQueryOptions = (date: Dayjs) =>
                 processed,
                 facilities: data.metaData.dimensions.ou.length,
                 realFacilities,
+                items: data.metaData.items,
             };
         },
     });

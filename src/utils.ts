@@ -180,3 +180,12 @@ export const summarize2 = (
 
     return Object.entries(values).map(([k, v]) => ({ dataPoint: k, ...v }));
 };
+
+export const dataPoints: Record<string, string> = {
+    "1066": "Stock status as of (Date)",
+    "1061": "Stock on hand (#) of the health product available at the time of reporting",
+    "1064": "	Stock status data source",
+    "1062": "What was consumption of product in last month -1",
+    "1086": "What was consumption of product in last month -2",
+    "1087": "What was consumption of product in last month -3",
+};
